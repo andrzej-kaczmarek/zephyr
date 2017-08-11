@@ -3999,6 +3999,10 @@ static int bt_init(void)
 	atomic_set_bit(bt_dev.flags, BT_DEV_READY);
 	bt_le_scan_update(false);
 
+#if defined(CONFIG_BT_SMP)
+	bt_keys_restore();
+#endif
+
 	return 0;
 }
 

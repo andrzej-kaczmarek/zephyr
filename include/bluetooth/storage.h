@@ -62,6 +62,16 @@ enum {
 	  * Type: u8_t key[16]
 	  */
 	BT_STORAGE_IRK,
+
+	/** Local Connection Signature Resolving Key
+	 *  Type: struct bt_storage_csrk
+	 */
+	BT_STORAGE_LOCAL_CSRK,
+
+	/** Remote Connection Signature Resolving Key
+	 *  Type: struct bt_storage_csrk
+	 */
+	BT_STORAGE_REMOTE_CSRK,
 };
 
 /** LTK key flags */
@@ -73,12 +83,24 @@ enum {
 	BT_STORAGE_LTK_SC              = BIT(1),
 };
 
+/** CSRK key flags */
+enum {
+	/* Key has been generated with MITM protection */
+	BT_STORAGE_CSRK_AUTHENTICATED   = BIT(0),
+};
+
 struct bt_storage_ltk {
 	u8_t                 flags;
 	/* Encryption key size used to generate key */
 	u8_t                 size;
 	u16_t                ediv;
 	u8_t                 rand[8];
+	u8_t                 val[16];
+};
+
+struct bt_storage_csrk {
+	u8_t                 flags;
+	u32_t                counter;
 	u8_t                 val[16];
 };
 

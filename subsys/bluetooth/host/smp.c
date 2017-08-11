@@ -1467,7 +1467,14 @@ static void smp_reset(struct bt_smp *smp)
 
 static void smp_pairing_complete(struct bt_smp *smp, u8_t status)
 {
+	struct bt_conn *conn = smp->chan.chan.conn;
+	struct bt_keys *keys = conn->le.keys;
+
 	BT_DBG("status 0x%x", status);
+
+	if (!status && atomic_test_bit(smp->flags, SMP_FLAG_BOND)) {
+		bt_keys_persist(keys);
+	}
 
 #if defined(CONFIG_BT_BREDR)
 	if (!status) {
