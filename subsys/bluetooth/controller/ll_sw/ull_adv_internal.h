@@ -39,7 +39,11 @@ uint8_t ull_adv_data_set(struct ll_adv_set *adv, uint8_t len,
 uint8_t ull_scan_rsp_set(struct ll_adv_set *adv, uint8_t len,
 			 uint8_t const *const data);
 
+
 #if defined(CONFIG_BT_CTLR_ADV_EXT)
+
+#define ULL_ADV_PDU_HDR_FIELD_SYNC_INFO BIT(5)
+
 /* Helper functions to initialise and reset ull_adv_aux module */
 int ull_adv_aux_init(void);
 int ull_adv_aux_reset(void);
@@ -67,6 +71,12 @@ void ull_adv_aux_release(struct ll_adv_aux_set *aux);
 
 /* helper function to schedule a mayfly to get aux offset */
 void ull_adv_aux_offset_get(struct ll_adv_set *adv);
+
+/* helper function to set/clear common extended header format fields */
+uint8_t ull_adv_aux_hdr_set_clear(struct ll_adv_set *adv,
+				  uint16_t sec_hdr_add_fields,
+				  uint16_t sec_hdr_rem_fields,
+				  void *value);
 
 #if defined(CONFIG_BT_CTLR_ADV_PERIODIC)
 int ull_adv_sync_init(void);
