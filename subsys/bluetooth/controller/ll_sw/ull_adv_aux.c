@@ -84,6 +84,7 @@ uint8_t ll_adv_aux_ad_data_set(uint8_t handle, uint8_t op, uint8_t frag_pref, ui
 			    uint8_t const *const data)
 {
 	struct pdu_adv *pri_pdu_prev;
+	struct pdu_adv_com_ext_adv *pri_com_hdr_prev;
 	struct lll_adv_aux *lll_aux;
 	struct ll_adv_aux_set *aux;
 	struct ll_adv_set *adv;
@@ -120,6 +121,12 @@ uint8_t ll_adv_aux_ad_data_set(uint8_t handle, uint8_t op, uint8_t frag_pref, ui
 	pri_pdu_prev = lll_adv_data_peek(lll);
 	if (pri_pdu_prev->type != PDU_ADV_TYPE_EXT_IND) {
 		return ull_adv_data_set(adv, len, data);
+	}
+
+	/* Advertising data are not supported by scannable instances */
+	pri_com_hdr_prev = (void *)&pri_pdu_prev->adv_ext_ind;
+	if (pri_com_hdr_prev->adv_mode & BT_HCI_LE_ADV_PROP_SCAN) {
+		return BT_HCI_ERR_INVALID_PARAM;
 	}
 
 	err = ull_adv_aux_hdr_set_clear(adv, 0, 0, NULL);
