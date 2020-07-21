@@ -167,6 +167,24 @@ static int prepare_cb(struct lll_prepare_param *prepare_param)
 	/* Switch to Rx if connectable or scannable */
 	if (pri_com_hdr->adv_mode & (BT_HCI_LE_ADV_PROP_CONN |
 				     BT_HCI_LE_ADV_PROP_SCAN)) {
+
+		struct pdu_adv *scan_pdu;
+
+		scan_pdu = lll_adv_scan_rsp_latest_get(lll_adv, &upd);
+
+#if defined(CONFIG_BT_CTLR_PRIVACY)
+		if (upd) {
+			/* Copy the address from the adv packet we will send
+			 * into the scan response.
+			 */
+			memcpy(&scan_pdu->scan_rsp.addr[0],
+			       &sec_pdu->adv_ext_ind.ext_hdr_adi_adv_data[1], BDADDR_SIZE);
+		}
+#else
+		ARG_UNUSED(scan_pdu);
+		ARG_UNUSED(upd);
+#endif /* !CONFIG_BT_CTLR_PRIVACY */
+
 		radio_isr_set(lll_adv_isr_tx, lll_adv);
 		radio_tmr_tifs_set(EVENT_IFS_US);
 		/* TODO: use proper phy */

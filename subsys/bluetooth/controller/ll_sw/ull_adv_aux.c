@@ -201,9 +201,9 @@ uint8_t ll_adv_aux_sr_data_set(uint8_t handle, uint8_t op, uint8_t frag_pref, ui
 	 * advertising.
 	 */
 	pri_pdu_prev = lll_adv_data_peek(lll);
-	if (pri_pdu_prev->type != PDU_ADV_TYPE_EXT_IND) {
+//	if (pri_pdu_prev->type != PDU_ADV_TYPE_EXT_IND) {
 		return ull_scan_rsp_set(adv, len, data);
-	}
+//	}
 
 	/* FIXME: Workaround to not fail when no data is supplied */
 	if (!len) {
