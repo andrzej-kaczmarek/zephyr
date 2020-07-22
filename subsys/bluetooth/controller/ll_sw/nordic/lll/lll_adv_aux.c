@@ -164,9 +164,17 @@ static int prepare_cb(struct lll_prepare_param *prepare_param)
 	/* Set the Radio Tx Packet */
 	radio_pkt_tx_set(sec_pdu);
 
-	/* TODO: Based on adv_mode switch to Rx, if needed */
-	radio_isr_set(lll_isr_done, lll);
-	radio_switch_complete_and_disable();
+	/* Switch to Rx if connectable or scannable */
+	if (pri_com_hdr->adv_mode & (BT_HCI_LE_ADV_PROP_CONN |
+				     BT_HCI_LE_ADV_PROP_SCAN)) {
+		radio_isr_set(lll_adv_isr_tx, lll_adv);
+		radio_tmr_tifs_set(EVENT_IFS_US);
+		/* TODO: use proper phy */
+		radio_switch_complete_and_rx(0);
+	} else {
+		radio_isr_set(lll_isr_done, lll);
+		radio_switch_complete_and_disable();
+	}
 
 #if defined(BT_CTLR_ADV_EXT_PBACK)
 	start_us = 1000;

@@ -122,6 +122,11 @@ void lll_adv_prepare(void *param)
 	LL_ASSERT(!err || err == -EINPROGRESS);
 }
 
+void lll_adv_isr_tx(void *param)
+{
+	isr_tx(param);
+}
+
 static int init_reset(void)
 {
 	return 0;

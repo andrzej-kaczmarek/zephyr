@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+void lll_adv_isr_tx(void *param);
+
 static inline struct pdu_adv *lll_adv_pdu_latest_get(struct lll_adv_pdu *pdu,
 						     uint8_t *is_modified)
 {
