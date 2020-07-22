@@ -494,6 +494,20 @@ uint8_t ll_adv_params_set(uint16_t interval, uint8_t adv_type,
 		/* NOTE: TargetA, filled at enable and RPA timeout */
 
 		/* NOTE: AdvA, filled at enable and RPA timeout */
+
+#if (CONFIG_BT_CTLR_ADV_AUX_SET > 0)
+		/* XXX need smth smarter here? */
+		if (pri_hdr->aux_ptr) {
+			uint8_t err;
+
+			err = ull_adv_aux_hdr_set_clear(adv, 0, 0, NULL);
+			if (err) {
+				/* TODO: cleanup? */
+				return err;
+			}
+		}
+#endif /* (CONFIG_BT_CTLR_ADV_AUX_SET > 0) */
+
 #endif /* CONFIG_BT_CTLR_ADV_EXT */
 
 	} else if (pdu->len == 0) {
