@@ -394,7 +394,10 @@ uint8_t ll_adv_params_set(uint16_t interval, uint8_t adv_type,
 
 #if (CONFIG_BT_CTLR_ADV_AUX_SET > 0)
 		/* AuxPtr flag */
-		if (pri_hdr_prev.aux_ptr) {
+		/* Need aux for connectable or scannable extended advertising */
+		if (pri_hdr_prev.aux_ptr ||
+		    ((evt_prop & (BT_HCI_LE_ADV_PROP_CONN |
+				  BT_HCI_LE_ADV_PROP_SCAN)))) {
 			pri_hdr->aux_ptr = 1;
 			pri_dptr += sizeof(struct pdu_adv_aux_ptr);
 		}
