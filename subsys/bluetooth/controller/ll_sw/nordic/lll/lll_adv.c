@@ -59,11 +59,18 @@ static inline int isr_rx_pdu(struct lll_adv *lll,
 			     uint8_t devmatch_ok, uint8_t devmatch_id,
 			     uint8_t irkmatch_ok, uint8_t irkmatch_id,
 			     uint8_t rssi_ready);
-static inline bool isr_rx_sr_check(struct lll_adv *lll, struct pdu_adv *adv,
-				   struct pdu_adv *sr, uint8_t devmatch_ok,
-				   uint8_t *rl_idx);
-static inline bool isr_rx_sr_adva_check(struct pdu_adv *adv,
-					struct pdu_adv *sr);
+#if defined(CONFIG_BT_CTLR_ADV_EXT)
+static bool isr_rx_sr_check(struct lll_adv *lll, struct pdu_adv *adv,
+			    struct pdu_adv *aux, struct pdu_adv *sr,
+			    uint8_t devmatch_ok, uint8_t *rl_idx);
+static bool isr_rx_sr_adva_check(struct pdu_adv *adv, struct pdu_adv *aux,
+				 struct pdu_adv *sr);
+#else
+static bool isr_rx_sr_check(struct lll_adv *lll, struct pdu_adv *adv,
+			    struct pdu_adv *sr, uint8_t devmatch_ok,
+			    uint8_t *rl_idx);
+static bool isr_rx_sr_adva_check(struct pdu_adv *adv, struct pdu_adv *sr);
+#endif
 
 #if defined(CONFIG_BT_CTLR_SCAN_REQ_NOTIFY)
 static inline int isr_rx_sr_report(struct pdu_adv *pdu_adv_rx,
@@ -622,6 +629,10 @@ static inline int isr_rx_pdu(struct lll_adv *lll,
 			     uint8_t rssi_ready)
 {
 	struct pdu_adv *pdu_rx, *pdu_adv;
+#if defined(CONFIG_BT_CTLR_ADV_EXT)
+	struct pdu_adv *pdu_aux;
+	uint8_t upd;
+#endif
 
 #if defined(CONFIG_BT_CTLR_PRIVACY)
 	/* An IRK match implies address resolution enabled */
@@ -633,11 +644,20 @@ static inline int isr_rx_pdu(struct lll_adv *lll,
 
 	pdu_rx = (void *)radio_pkt_scratch_get();
 	pdu_adv = lll_adv_data_curr_get(lll);
+#if defined(CONFIG_BT_CTLR_ADV_EXT)
+	pdu_aux = lll_adv_aux_data_latest_get(lll->aux, &upd);
+#endif
 
 	if ((pdu_rx->type == PDU_ADV_TYPE_SCAN_REQ) &&
 	    (pdu_rx->len == sizeof(struct pdu_adv_scan_req)) &&
 	    (pdu_adv->type != PDU_ADV_TYPE_DIRECT_IND) &&
-	    isr_rx_sr_check(lll, pdu_adv, pdu_rx, devmatch_ok, &rl_idx)) {
+#if defined(CONFIG_BT_CTLR_ADV_EXT)
+	    isr_rx_sr_check(lll, pdu_adv, pdu_aux, pdu_rx, devmatch_ok,
+			    &rl_idx) &&
+#else
+	    isr_rx_sr_check(lll, pdu_adv, pdu_rx, devmatch_ok, &rl_idx) &&
+#endif
+	    1) {
 		radio_isr_set(isr_done, lll);
 		radio_switch_complete_and_disable();
 		radio_pkt_tx_set(lll_adv_scan_rsp_curr_get(lll));
@@ -751,9 +771,15 @@ static inline int isr_rx_pdu(struct lll_adv *lll,
 	return -EINVAL;
 }
 
-static inline bool isr_rx_sr_check(struct lll_adv *lll, struct pdu_adv *adv,
-				   struct pdu_adv *sr, uint8_t devmatch_ok,
-				   uint8_t *rl_idx)
+#if defined(CONFIG_BT_CTLR_ADV_EXT)
+static bool isr_rx_sr_check(struct lll_adv *lll, struct pdu_adv *adv,
+			    struct pdu_adv *aux, struct pdu_adv *sr,
+			    uint8_t devmatch_ok, uint8_t *rl_idx)
+#else
+static bool isr_rx_sr_check(struct lll_adv *lll, struct pdu_adv *adv,
+			    struct pdu_adv *sr, uint8_t devmatch_ok,
+			    uint8_t *rl_idx)
+#endif
 {
 #if defined(CONFIG_BT_CTLR_PRIVACY)
 	return ((((lll->filter_policy & 0x01) == 0) &&
@@ -762,18 +788,43 @@ static inline bool isr_rx_sr_check(struct lll_adv *lll, struct pdu_adv *adv,
 						rl_idx)) ||
 		(((lll->filter_policy & 0x01) != 0) &&
 		 (devmatch_ok || ull_filter_lll_irk_whitelisted(*rl_idx)))) &&
+#if defined(CONFIG_BT_CTLR_ADV_EXT)
+		isr_rx_sr_adva_check(adv, aux, sr);
+#else
 		isr_rx_sr_adva_check(adv, sr);
+#endif
 #else
 	return (((lll->filter_policy & 0x01) == 0U) || devmatch_ok) &&
 		isr_rx_sr_adva_check(adv, sr);
 #endif /* CONFIG_BT_CTLR_PRIVACY */
 }
 
-static inline bool isr_rx_sr_adva_check(struct pdu_adv *adv,
-					struct pdu_adv *sr)
+#if defined(CONFIG_BT_CTLR_ADV_EXT)
+static bool isr_rx_sr_adva_check(struct pdu_adv *adv, struct pdu_adv *aux,
+				 struct pdu_adv *sr)
+#else
+static bool isr_rx_sr_adva_check(struct pdu_adv *adv, struct pdu_adv *sr)
+#endif
 {
-	return (adv->tx_addr == sr->rx_addr) &&
-		!memcmp(adv->adv_ind.addr, sr->scan_req.adv_addr, BDADDR_SIZE);
+	uint8_t *addr;
+	uint8_t tx_addr;
+
+#if defined(CONFIG_BT_CTLR_ADV_EXT)
+	if (adv->type == PDU_ADV_TYPE_EXT_IND) {
+		/* AdvA is placed at 2nd byte of ext hdr data */
+		addr = &aux->adv_ext_ind.ext_hdr_adi_adv_data[1];
+		tx_addr = aux->tx_addr;
+	} else {
+		addr = adv->adv_ind.addr;
+		tx_addr = adv->tx_addr;
+	}
+#else
+	addr = adv->adv_ind.addr;
+	tx_addr = adv->tx_addr;
+#endif
+
+	return (tx_addr == sr->rx_addr) &&
+		!memcmp(addr, sr->scan_req.adv_addr, BDADDR_SIZE);
 }
 
 #if defined(CONFIG_BT_CTLR_SCAN_REQ_NOTIFY)
