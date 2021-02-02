@@ -151,7 +151,7 @@
 
 #define PKT_US(octets, phy) PKT_DC_US((octets), (PDU_MIC_SIZE), (phy))
 
-#define PKT_AC_US(octets, mic, phy) PKT_DC_US((octets), (mic), (phy))
+#define PKT_AC_US(octets, phy) PKT_DC_US((octets), 0, (phy))
 
 /* Extra bytes for enqueued node_rx metadata: rssi (always), resolving
  * index, directed adv report, and mesh channel and instant.
