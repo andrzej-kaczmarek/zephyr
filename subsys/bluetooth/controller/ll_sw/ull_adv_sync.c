@@ -271,6 +271,28 @@ static uint8_t adv_sync_pdu_ad_data_set(struct pdu_adv *pdu,
 	return 0;
 }
 
+static uint8_t adv_sync_pdu_cte_info_set(struct pdu_adv *pdu,
+					 const struct pdu_cte_info *cte_info)
+{
+	struct pdu_adv_com_ext_adv *com_hdr;
+	struct pdu_adv_ext_hdr *ext_hdr;
+	uint8_t *dptr;
+
+	com_hdr = &pdu->adv_ext_ind;
+	ext_hdr = &com_hdr->ext_hdr;
+	dptr = &com_hdr->ext_hdr_adv_data[com_hdr->ext_hdr_len];
+
+	/* Periodic adv PDUs do not have AdvA/TargetA */
+	LL_ASSERT(!ext_hdr->adv_addr);
+	LL_ASSERT(!ext_hdr->tgt_addr);
+
+	if (ext_hdr->cte_info) {
+		memcpy(dptr, cte_info, sizeof(*cte_info));
+	}
+
+	return 0;
+}
+
 #if defined(CONFIG_BT_CTLR_ADV_PDU_LINK)
 static void adv_sync_pdu_duplicate_chain(struct pdu_adv *pdu,
 					 struct pdu_adv *pdu_prev)
