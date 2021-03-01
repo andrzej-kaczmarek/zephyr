@@ -381,7 +381,7 @@ static void pdu_b2b_aux_ptr_update(struct pdu_adv *pdu, uint8_t phy,
 	dptr = hdr->data;
 
 	if (!hdr->aux_ptr) {
-		return pdu;
+		return;
 	}
 
 	LL_ASSERT(!hdr->adv_addr);
