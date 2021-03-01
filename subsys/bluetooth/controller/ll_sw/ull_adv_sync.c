@@ -121,6 +121,181 @@ static uint8_t adv_sync_pdu_init(struct pdu_adv *pdu, uint8_t ext_hdr_flags)
 
 	return 0;
 }
+
+static uint8_t adv_sync_pdu_init_from_prev_pdu(struct pdu_adv *pdu,
+					       struct pdu_adv *pdu_prev,
+					       uint16_t ext_hdr_flags_add,
+					       uint16_t ext_hdr_flags_rem)
+{
+	struct pdu_adv_com_ext_adv *com_hdr_prev;
+	struct pdu_adv_ext_hdr *ext_hdr_prev;
+	struct pdu_adv_com_ext_adv *com_hdr;
+	struct pdu_adv_ext_hdr *ext_hdr;
+	uint8_t ext_hdr_flags_prev;
+	uint8_t ext_hdr_flags;
+	uint8_t *dptr_prev;
+	uint8_t len_prev;
+	uint8_t *dptr;
+	uint8_t len;
+
+	/* Copy complete header, assume it was set properly in old PDU */
+	*(uint8_t *)pdu = *(uint8_t *)pdu_prev;
+
+	com_hdr_prev = &pdu_prev->adv_ext_ind;
+	com_hdr = &pdu->adv_ext_ind;
+
+	com_hdr->adv_mode = 0U;
+
+	ext_hdr_prev = &com_hdr_prev->ext_hdr;
+	ext_hdr = &com_hdr->ext_hdr;
+
+	ext_hdr_flags_prev = *(uint8_t *)ext_hdr_prev;
+	ext_hdr_flags = ext_hdr_flags_prev |
+			(ext_hdr_flags_add & (~ext_hdr_flags_rem));
+
+	*(uint8_t *)ext_hdr = ext_hdr_flags;
+
+	LL_ASSERT(!ext_hdr->adv_addr);
+	LL_ASSERT(!ext_hdr->tgt_addr);
+	LL_ASSERT(!ext_hdr->adi);
+	LL_ASSERT(!ext_hdr->sync_info);
+
+	dptr = ext_hdr->data;
+	dptr_prev = ext_hdr_prev->data;
+
+	/* Note: skip length verification of ext header writes as we assume that
+	 *       all PDUs are large enough to store at least complete ext header.
+	 */
+
+	/* Copy CTEInfo, if applicable */
+	if (ext_hdr->cte_info) {
+		if (ext_hdr_prev->cte_info) {
+			memcpy(dptr, dptr_prev, sizeof(struct pdu_cte_info));
+		}
+		dptr += sizeof(struct pdu_cte_info);
+	}
+	if (ext_hdr_prev->cte_info) {
+		dptr_prev += sizeof(struct pdu_cte_info);
+	}
+
+	/* Add AuxPtr, if applicable. Do not copy since it will be updated later
+	 * anyway.
+	 */
+	if (ext_hdr->aux_ptr) {
+		dptr += sizeof(struct pdu_adv_aux_ptr);
+	}
+	if (ext_hdr_prev->aux_ptr) {
+		dptr_prev += sizeof(struct pdu_adv_aux_ptr);
+	}
+
+	/* Copy TxPower, if applicable */
+	if (ext_hdr->tx_pwr) {
+		if (ext_hdr_prev->tx_pwr) {
+			memcpy(dptr, dptr_prev, sizeof(uint8_t));
+		}
+		dptr += sizeof(uint8_t);
+	}
+	if (ext_hdr_prev->tx_pwr) {
+		dptr_prev += sizeof(uint8_t);
+	}
+
+	LL_ASSERT(ext_hdr_prev  >= 0);
+
+	/* Copy ACAD */
+	len = com_hdr_prev->ext_hdr_len - (dptr_prev - (uint8_t *)ext_hdr_prev);
+	memcpy(dptr, dptr_prev, len);
+	dptr += len;
+
+	/* Check populated ext header length excluding length itself. If 0, then
+	 * there was neither field nor ACAD populated and we skip ext header
+	 * entirely.
+	 */
+	len = dptr - ext_hdr->data;
+	if (len == 0) {
+		com_hdr->ext_hdr_len = 0;
+	} else {
+		com_hdr->ext_hdr_len = len +
+				       offsetof(struct pdu_adv_ext_hdr, data);
+	}
+
+	/* Both PDUs have now ext header length calculated properly, reset
+	 * pointers to start of AD.
+	 */
+	dptr = &com_hdr->ext_hdr_adv_data[com_hdr->ext_hdr_len];
+	dptr_prev = &com_hdr_prev->ext_hdr_adv_data[com_hdr_prev->ext_hdr_len];
+
+	/* Calculate length of AD to copy and AD length available in new PDU */
+	len_prev = pdu_prev->len - (dptr_prev - pdu_prev->payload);
+	len = PDU_AC_PAYLOAD_SIZE_MAX - (dptr - pdu->payload);
+
+	/* TODO: we should allow partial copy and let caller refragment data */
+	if (len < len_prev) {
+		return BT_HCI_ERR_PACKET_TOO_LONG;
+	}
+
+	/* Copy AD */
+	if (!(ext_hdr_flags_rem & ULL_ADV_PDU_HDR_FIELD_AD_DATA)) {
+		len = MIN(len, len_prev);
+		memcpy(dptr, dptr_prev, len);
+		dptr += len;
+	}
+
+	/* Finalize PDU */
+	pdu->len = dptr - pdu->payload;
+
+	return 0;
+}
+
+static uint8_t adv_sync_pdu_ad_data_set(struct pdu_adv *pdu,
+					const uint8_t *data, uint8_t len)
+{
+	struct pdu_adv_com_ext_adv *com_hdr;
+	uint8_t len_max;
+	uint8_t *dptr;
+
+	com_hdr = &pdu->adv_ext_ind;
+
+	dptr = &com_hdr->ext_hdr_adv_data[com_hdr->ext_hdr_len];
+
+	len_max = PDU_AC_PAYLOAD_SIZE_MAX - (dptr - pdu->payload);
+	/* TODO: we should allow partial copy and let caller refragment data */
+	if (len > len_max) {
+		return BT_HCI_ERR_PACKET_TOO_LONG;
+	}
+
+	memcpy(dptr, data, len);
+	dptr += len;
+
+	pdu->len = dptr - pdu->payload;
+
+	return 0;
+}
+
+#if defined(CONFIG_BT_CTLR_ADV_PDU_LINK)
+static void adv_sync_pdu_duplicate_chain(struct pdu_adv *pdu,
+					 struct pdu_adv *pdu_prev)
+{
+	uint8_t err;
+
+	while (lll_adv_pdu_linked_next_get(pdu_prev)) {
+		struct pdu_adv *pdu_new;
+
+		pdu_prev = lll_adv_pdu_linked_next_get(pdu_prev);
+		pdu_new = lll_adv_pdu_alloc_pdu_adv();
+
+		/* We make exact copy of old PDU, there's really nothing that
+		 * can go wrong there assuming original PDU was created properly
+		 */
+		err = adv_sync_pdu_init_from_prev_pdu(pdu_new, pdu_prev, 0, 0);
+		LL_ASSERT(err);
+
+		lll_adv_pdu_linked_append(pdu_new, pdu);
+
+		pdu = pdu_new;
+	}
+}
+#endif /* CONFIG_BT_CTLR_ADV_PDU_LINK */
+
 uint8_t ll_adv_sync_param_set(uint8_t handle, uint16_t interval, uint16_t flags)
 {
 	struct lll_adv_sync *lll_sync;
@@ -195,10 +370,11 @@ uint8_t ll_adv_sync_param_set(uint8_t handle, uint16_t interval, uint16_t flags)
 uint8_t ll_adv_sync_ad_data_set(uint8_t handle, uint8_t op, uint8_t len,
 				uint8_t const *const data)
 {
-	struct adv_pdu_field_data pdu_data;
 	struct lll_adv_sync *lll_sync;
+	struct pdu_adv *pdu_prev;
 	struct ll_adv_set *adv;
-	uint8_t value[5];
+	void *extra_data_prev;
+	struct pdu_adv *pdu;
 	uint8_t ter_idx;
 	uint8_t err;
 
@@ -219,15 +395,38 @@ uint8_t ll_adv_sync_ad_data_set(uint8_t handle, uint8_t op, uint8_t len,
 		return BT_HCI_ERR_UNKNOWN_ADV_IDENTIFIER;
 	}
 
-	pdu_data.field_data = value;
-	*pdu_data.field_data = len;
-	sys_put_le32((uint32_t)data, pdu_data.field_data + 1);
+	pdu_prev = lll_adv_sync_data_peek(lll_sync, &extra_data_prev);
+	pdu = lll_adv_sync_data_alloc(lll_sync, extra_data_prev, &ter_idx);
 
-	err = ull_adv_sync_pdu_set_clear(adv, ULL_ADV_PDU_HDR_FIELD_AD_DATA,
-					 0, &pdu_data, &ter_idx);
+	/* TODO: pdu_prev will be the same as pdu if data are still enqueued
+	 *       and waiting for LLL to swap, creating new chain will not work
+	 *       in such case since we cannot update it in-place.
+	 */
+	LL_ASSERT(pdu_prev != pdu);
+
+	/* Initialize new PDU to be the same as old, except for AD which we
+	 * replace with new ones.
+	 */
+	err = adv_sync_pdu_init_from_prev_pdu(pdu, pdu_prev, 0,
+					      ULL_ADV_PDU_HDR_FIELD_AD_DATA);
 	if (err) {
 		return err;
 	}
+
+	/* TODO: only data in 1st PDU is supported as for now, need to add
+	 *       support for fragmentation.
+	 */
+	err = adv_sync_pdu_ad_data_set(pdu, data, len);
+	if (err) {
+		return err;
+	}
+
+#if defined(CONFIG_BT_CTLR_ADV_PDU_LINK)
+	/* There may be linked PDUs due to e.g. CTEInfo so need to duplicate
+	 * all of them to new chain.
+	 */
+	adv_sync_pdu_duplicate_chain(pdu, pdu_prev);
+#endif
 
 	lll_adv_sync_data_enqueue(lll_sync, ter_idx);
 
