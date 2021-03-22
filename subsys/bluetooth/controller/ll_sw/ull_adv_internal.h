@@ -118,6 +118,15 @@ uint8_t ull_adv_sync_pdu_set_clear(struct ll_adv_set *adv,
 				   uint16_t hdr_rem_fields,
 				   struct adv_pdu_field_data *data,
 				   uint8_t *ter_idx);
+uint8_t ull_adv_sync_hdr_set_clear(struct lll_adv_sync *lll_sync,
+				   struct pdu_adv *ter_pdu_prev,
+				   struct pdu_adv *ter_pdu,
+				   uint16_t hdr_add_fields,
+				   uint16_t hdr_rem_fields,
+				   void *value);
+uint8_t adv_sync_pdu_init(struct pdu_adv *pdu, uint8_t ext_hdr_flags);
+uint8_t adv_sync_pdu_cte_info_set(struct pdu_adv *pdu,
+					 const struct pdu_cte_info *cte_info);
 
 /* helper function to calculate common ext adv payload header length and
  * adjust the data pointer.

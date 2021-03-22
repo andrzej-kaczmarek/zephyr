@@ -57,12 +57,12 @@ static inline void adv_sync_extra_data_set_clear(void *extra_data_prev,
 						 void *data);
 #endif /* CONFIG_BT_CTLR_DF_ADV_CTE_TX */
 
-static uint8_t adv_sync_hdr_set_clear(struct lll_adv_sync *lll_sync,
-				      struct pdu_adv *ter_pdu_prev,
-				      struct pdu_adv *ter_pdu,
-				      uint16_t hdr_add_fields,
-				      uint16_t hdr_rem_fields,
-				      void *data);
+// static uint8_t adv_sync_hdr_set_clear(struct lll_adv_sync *lll_sync,
+// 				      struct pdu_adv *ter_pdu_prev,
+// 				      struct pdu_adv *ter_pdu,
+// 				      uint16_t hdr_add_fields,
+// 				      uint16_t hdr_rem_fields,
+// 				      void *data);
 
 static void mfy_sync_offset_get(void *param);
 static inline struct pdu_adv_sync_info *sync_info_get(struct pdu_adv *pdu);
@@ -76,7 +76,7 @@ static void ticker_op_cb(uint32_t status, void *param);
 static struct ll_adv_sync_set ll_adv_sync_pool[CONFIG_BT_CTLR_ADV_SYNC_SET];
 static void *adv_sync_free;
 
-static uint8_t adv_sync_pdu_init(struct pdu_adv *pdu, uint8_t ext_hdr_flags)
+uint8_t adv_sync_pdu_init(struct pdu_adv *pdu, uint8_t ext_hdr_flags)
 {
 	struct pdu_adv_com_ext_adv *com_hdr;
 	struct pdu_adv_ext_hdr *ext_hdr;
@@ -271,7 +271,7 @@ static uint8_t adv_sync_pdu_ad_data_set(struct pdu_adv *pdu,
 	return 0;
 }
 
-static uint8_t adv_sync_pdu_cte_info_set(struct pdu_adv *pdu,
+uint8_t adv_sync_pdu_cte_info_set(struct pdu_adv *pdu,
 					 const struct pdu_cte_info *cte_info)
 {
 	struct pdu_adv_com_ext_adv *com_hdr;
@@ -778,7 +778,7 @@ uint8_t ull_adv_sync_pdu_set_clear(struct ll_adv_set *adv,
 		}
 	}
 
-	err = adv_sync_hdr_set_clear(lll_sync, pdu_prev, pdu_new,
+	err = ull_adv_sync_hdr_set_clear(lll_sync, pdu_prev, pdu_new,
 				     hdr_add_fields, hdr_rem_fields,
 				     (data ? data->field_data : NULL));
 	if (err) {
@@ -891,7 +891,7 @@ static inline uint8_t sync_remove(struct ll_adv_sync_set *sync,
  *
  * @return Zero in case of success, other value in case of failure.
  */
-static uint8_t adv_sync_hdr_set_clear(struct lll_adv_sync *lll_sync,
+uint8_t ull_adv_sync_hdr_set_clear(struct lll_adv_sync *lll_sync,
 				      struct pdu_adv *ter_pdu_prev,
 				      struct pdu_adv *ter_pdu,
 				      uint16_t hdr_add_fields,
