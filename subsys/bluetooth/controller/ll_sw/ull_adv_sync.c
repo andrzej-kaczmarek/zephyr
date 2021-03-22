@@ -280,8 +280,8 @@ static uint8_t adv_sync_pdu_cte_info_set(struct pdu_adv *pdu,
 
 	com_hdr = &pdu->adv_ext_ind;
 	ext_hdr = &com_hdr->ext_hdr;
-	dptr = &com_hdr->ext_hdr_adv_data[com_hdr->ext_hdr_len];
 
+	dptr = ext_hdr->data;
 	/* Periodic adv PDUs do not have AdvA/TargetA */
 	LL_ASSERT(!ext_hdr->adv_addr);
 	LL_ASSERT(!ext_hdr->tgt_addr);
