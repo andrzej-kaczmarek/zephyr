@@ -899,7 +899,7 @@ uint8_t ull_adv_sync_hdr_set_clear(struct lll_adv_sync *lll_sync,
 				      void *value)
 {
 	struct pdu_adv_com_ext_adv *ter_com_hdr, *ter_com_hdr_prev;
-	struct pdu_adv_ext_hdr *ter_hdr, ter_hdr_prev;
+	struct pdu_adv_ext_hdr ter_hdr = {0}, ter_hdr_prev = {0};
 	uint8_t *ter_dptr, *ter_dptr_prev;
 	uint8_t acad_len_prev;
 	uint8_t ter_len_prev;
@@ -913,9 +913,11 @@ uint8_t ull_adv_sync_hdr_set_clear(struct lll_adv_sync *lll_sync,
 
 	/* Get common pointers from reference to previous tertiary PDU data */
 	ter_com_hdr_prev = (void *)&ter_pdu_prev->adv_ext_ind;
-	ter_hdr = (void *)ter_com_hdr_prev->ext_hdr_adv_data;
-	ter_hdr_prev = *ter_hdr;
-	ter_dptr_prev = ter_hdr->data;
+	ter_dptr_prev = &ter_com_hdr_prev->ext_hdr.data[0];
+
+	if (ter_com_hdr_prev->ext_hdr_len) {
+		ter_hdr_prev = ter_com_hdr_prev->ext_hdr;
+	}
 
 	/* Set common fields in reference to new tertiary PDU data buffer */
 	ter_pdu->type = ter_pdu_prev->type;
@@ -927,9 +929,7 @@ uint8_t ull_adv_sync_hdr_set_clear(struct lll_adv_sync *lll_sync,
 
 	ter_com_hdr = (void *)&ter_pdu->adv_ext_ind;
 	ter_com_hdr->adv_mode = ter_com_hdr_prev->adv_mode;
-	ter_hdr = (void *)ter_com_hdr->ext_hdr_adv_data;
-	ter_dptr = ter_hdr->data;
-	*(uint8_t *)ter_hdr = 0U;
+	ter_dptr = ter_com_hdr->ext_hdr.data;
 
 	/* No AdvA in AUX_SYNC_IND */
 	/* No TargetA in AUX_SYNC_IND */
@@ -937,14 +937,14 @@ uint8_t ull_adv_sync_hdr_set_clear(struct lll_adv_sync *lll_sync,
 #if defined(CONFIG_BT_CTLR_DF_ADV_CTE_TX)
 	/* If requested add or update CTEInfo */
 	if (hdr_add_fields & ULL_ADV_PDU_HDR_FIELD_CTE_INFO) {
-		ter_hdr->cte_info = 1;
+		ter_hdr.cte_info = 1;
 		cte_info = *(uint8_t *)value;
 		value = (uint8_t *)value + 1;
 		ter_dptr += sizeof(struct pdu_cte_info);
 	/* If CTEInfo exists in prev and is not requested to be removed */
 	} else if (!(hdr_rem_fields & ULL_ADV_PDU_HDR_FIELD_CTE_INFO) &&
 		   ter_hdr_prev.cte_info) {
-		ter_hdr->cte_info = 1;
+		ter_hdr.cte_info = 1;
 		ter_dptr += sizeof(struct pdu_cte_info);
 	}
 
@@ -960,9 +960,9 @@ uint8_t ull_adv_sync_hdr_set_clear(struct lll_adv_sync *lll_sync,
 	if ((hdr_add_fields & ULL_ADV_PDU_HDR_FIELD_AUX_PTR) ||
 	    (!(hdr_rem_fields & ULL_ADV_PDU_HDR_FIELD_AUX_PTR) &&
 	     ter_hdr_prev.aux_ptr)) {
-		ter_hdr->aux_ptr = 1;
+		ter_hdr.aux_ptr = 1;
 	}
-	if (ter_hdr->aux_ptr) {
+	if (ter_hdr.aux_ptr) {
 		ter_dptr += sizeof(struct pdu_adv_aux_ptr);
 	}
 	if (ter_hdr_prev.aux_ptr) {
@@ -975,7 +975,7 @@ uint8_t ull_adv_sync_hdr_set_clear(struct lll_adv_sync *lll_sync,
 	if (ter_hdr_prev.tx_pwr) {
 		ter_dptr_prev++;
 
-		ter_hdr->tx_pwr = 1;
+		ter_hdr.tx_pwr = 1;
 		ter_dptr++;
 	}
 
@@ -1049,14 +1049,14 @@ uint8_t ull_adv_sync_hdr_set_clear(struct lll_adv_sync *lll_sync,
 	memmove(ter_dptr, ter_dptr_prev, acad_len_prev);
 
 	/* Tx Power */
-	if (ter_hdr->tx_pwr) {
+	if (ter_hdr.tx_pwr) {
 		*--ter_dptr = *--ter_dptr_prev;
 	}
 
 	/* No SyncInfo in AUX_SYNC_IND */
 
 	/* AuxPtr */
-	if (ter_hdr->aux_ptr) {
+	if (ter_hdr.aux_ptr) {
 		/* ToDo Update setup of aux_ptr - check documentation */
 		if (ter_hdr_prev.aux_ptr) {
 			ter_dptr_prev -= sizeof(struct pdu_adv_aux_ptr);
@@ -1071,7 +1071,7 @@ uint8_t ull_adv_sync_hdr_set_clear(struct lll_adv_sync *lll_sync,
 	/* No ADI in AUX_SYNC_IND*/
 
 #if defined(CONFIG_BT_CTLR_DF_ADV_CTE_TX)
-	if (ter_hdr->cte_info) {
+	if (ter_hdr.cte_info) {
 		if (hdr_add_fields & ULL_ADV_PDU_HDR_FIELD_CTE_INFO) {
 			*--ter_dptr = cte_info;
 		} else {
@@ -1083,8 +1083,12 @@ uint8_t ull_adv_sync_hdr_set_clear(struct lll_adv_sync *lll_sync,
 	/* No TargetA in AUX_SYNC_IND */
 	/* No AdvA in AUX_SYNC_IND */
 
+	if (ter_com_hdr->ext_hdr_len != 0) {
+		ter_com_hdr->ext_hdr = ter_hdr;
+	}
+
 	return 0;
-}
+	}
 
 #if defined(CONFIG_BT_CTLR_DF_ADV_CTE_TX)
 /* @brief Set or clear fields in extended advertising header and store
