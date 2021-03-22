@@ -183,6 +183,13 @@ config BT_CTLR_ADV_SYNC_PDU_BACK2BACK
 	  a constant offset as a best effort. This means advertising train can be
 	  preempted by other event at any time.
 
+config BT_CTLR_ADV_SYNC_CHAIN_LEN_MAX
+	int "LE Periodic Advertising chain maximum length"
+	range 1 16
+	default 16
+	help
+	  Maximum supported number of PDUs in periodic advertising chain.
+
 config BT_CTLR_ADV_DATA_BUF_MAX
 	int "Advertising Data Maximum Buffers"
 	depends on BT_BROADCASTER
