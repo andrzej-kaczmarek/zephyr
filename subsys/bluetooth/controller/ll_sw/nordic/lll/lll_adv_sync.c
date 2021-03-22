@@ -398,7 +398,7 @@ static void pdu_b2b_aux_ptr_update(struct pdu_adv *pdu, uint8_t phy,
 	/* Skip flags */
 	dptr = hdr->data;
 
-	if (!hdr->aux_ptr) {
+	if (!com_hdr->ext_hdr_len || (com_hdr->ext_hdr_len && !hdr->aux_ptr)) {
 		return;
 	}
 
