@@ -379,10 +379,41 @@ uint8_t ll_adv_sync_param_set(uint8_t handle, uint16_t interval, uint16_t flags)
 
 	sync->interval = interval;
 
+#if defined(CONFIG_BT_CTLR_ADV_SYNC_PDU_BACK2BACK)
+	err = ull_adv_sync_pdu_set_clear(adv, ULL_ADV_PDU_HDR_FIELD_AUX_PTR, 0, NULL, &ter_idx);
+#else
 	err = ull_adv_sync_pdu_set_clear(adv, 0, 0, NULL, &ter_idx);
+#endif /* CONFIG_BT_CTLR_ADV_SYNC_PDU_BACK2BACK */
 	if (err) {
 		return err;
 	}
+
+#if defined(CONFIG_BT_CTLR_ADV_SYNC_PDU_BACK2BACK)
+	struct pdu_adv *pdu_next, *pdu_prev;
+	void *extra_data;
+	uint8_t idx = 0;
+	uint8_t pdu_num = 3;
+	pdu_prev = (void *)lll_sync->data.pdu[ter_idx];
+	const char *tmp = "test1 test1 test1";
+	while (idx < pdu_num) {
+		/* allocate new PDU */
+		pdu_next = lll_adv_pdu_alloc_pdu_adv();
+		if (!pdu_next) {
+			return BT_HCI_ERR_MEM_CAPACITY_EXCEEDED;
+		}
+
+		if (idx < pdu_num -1) {
+			adv_sync_pdu_init(pdu_next, ULL_ADV_PDU_HDR_FIELD_AUX_PTR);
+		} else {
+			adv_sync_pdu_init(pdu_next, 0);
+		}
+		adv_sync_pdu_ad_data_set(pdu_next, tmp, strlen(tmp));
+		/* add to chain */
+		lll_adv_pdu_linked_append(pdu_next, pdu_prev);
+		pdu_prev = pdu_next;
+		++idx;
+	}
+#endif /* CONFIG_BT_CTLR_ADV_SYNC_PDU_BACK2BACK */
 
 	lll_adv_sync_data_enqueue(lll_sync, ter_idx);
 
