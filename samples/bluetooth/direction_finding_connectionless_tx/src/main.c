@@ -31,8 +31,8 @@ static struct bt_le_ext_adv *adv_set;
 static struct bt_le_adv_param param =
 		BT_LE_ADV_PARAM_INIT(BT_LE_ADV_OPT_EXT_ADV |
 				     BT_LE_ADV_OPT_USE_NAME,
-				     BT_GAP_ADV_FAST_INT_MIN_2,
-				     BT_GAP_ADV_FAST_INT_MAX_2,
+				     BT_GAP_ADV_SLOW_INT_MIN *2,
+				     BT_GAP_ADV_SLOW_INT_MAX *2,
 				     NULL);
 
 static struct bt_le_ext_adv_start_param ext_adv_start_param = {
@@ -41,8 +41,8 @@ static struct bt_le_ext_adv_start_param ext_adv_start_param = {
 };
 
 static struct bt_le_per_adv_param per_adv_param = {
-	.interval_min = BT_GAP_ADV_SLOW_INT_MIN,
-	.interval_max = BT_GAP_ADV_SLOW_INT_MAX,
+	.interval_min = BT_GAP_ADV_SLOW_INT_MIN*2,
+	.interval_max = BT_GAP_ADV_SLOW_INT_MAX*2,
 	.options = BT_LE_ADV_OPT_USE_TX_POWER,
 };
 
@@ -52,7 +52,7 @@ static uint8_t ant_patterns[] = {0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0x
 
 struct bt_df_adv_cte_tx_param cte_params = {
 	.cte_len = CTE_LEN,
-	.cte_count = 1,
+	.cte_count = 6,
 #if defined(CONFIG_BT_CTLR_DF_ANT_SWITCH_TX)
 	.cte_type = BT_HCI_LE_AOD_CTE_2US,
 	.num_ant_ids = ARRAY_SIZE(ant_patterns),
