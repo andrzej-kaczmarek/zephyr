@@ -43,6 +43,8 @@
 
 #if defined(CONFIG_BT_CTLR_ADV_SYNC_PDU_BACK2BACK)
 #define ADV_SYNC_PDU_B2B_IFS  (EVENT_MAFS_US)
+#else
+#define ADV_SYNC_PDU_B2B_IFS 0
 #endif
 
 static int init_reset(void);
@@ -112,9 +114,6 @@ static int init_reset(void)
 
 static int prepare_cb(struct lll_prepare_param *p)
 {
-#if defined(CONFIG_BT_CTLR_DF_ADV_CTE_TX)
-	struct lll_df_adv_cfg *df_cfg;
-#endif /* CONFIG_BT_CTLR_DF_ADV_CTE_TX */
 	struct lll_adv_sync *lll;
 	uint32_t ticks_at_event;
 	uint32_t ticks_at_start;
@@ -122,9 +121,9 @@ static int prepare_cb(struct lll_prepare_param *p)
 	uint8_t data_chan_use;
 	struct pdu_adv *pdu;
 	struct evt_hdr *evt;
+	uint32_t cte_len_us;
 	uint32_t remainder;
 	uint32_t start_us;
-	void *extra_data;
 	uint8_t phy_s;
 	uint8_t upd;
 
@@ -169,8 +168,14 @@ static int prepare_cb(struct lll_prepare_param *p)
 			     ((uint32_t)lll->crc_init[0])));
 	lll_chan_set(data_chan_use);
 
-	pdu = lll_adv_sync_data_latest_get(lll, &extra_data, &upd);
+	pdu = lll_adv_sync_data_latest_get(lll, NULL, &upd);
 	LL_ASSERT(pdu);
+
+#if defined(CONFIG_BT_CTLR_DF_ADV_CTE_TX)
+	lll_df_cte_tx_enable(lll, pdu, &cte_len_us);
+#else
+	cte_len_us = 0U;
+#endif /* CONFIG_BT_CTLR_DF_ADV_CTE_TX */
 
 #if defined(CONFIG_BT_CTLR_ADV_SYNC_PDU_BACK2BACK)
 	if (upd) {
@@ -181,18 +186,6 @@ static int prepare_cb(struct lll_prepare_param *p)
 	}
 #endif
 
-#if defined(CONFIG_BT_CTLR_DF_ADV_CTE_TX)
-	if (extra_data) {
-		df_cfg = (struct lll_df_adv_cfg *)extra_data;
-		lll_df_conf_cte_tx_enable(df_cfg->cte_type, df_cfg->cte_length,
-					  df_cfg->ant_sw_len, df_cfg->ant_ids);
-		lll->cte_started = 1U;
-	} else {
-		df_cfg = NULL;
-		lll->cte_started = 0U;
-	}
-#endif /* CONFIG_BT_CTLR_DF_ADV_CTE_TX */
-
 	radio_pkt_tx_set(pdu);
 
 #if defined(CONFIG_BT_CTLR_ADV_SYNC_PDU_BACK2BACK)
@@ -201,7 +194,14 @@ static int prepare_cb(struct lll_prepare_param *p)
 
 		radio_isr_set(isr_tx, lll);
 		radio_tmr_tifs_set(ADV_SYNC_PDU_B2B_IFS);
-		radio_switch_complete_and_b2b_tx(phy_s, 0, phy_s, 0);
+#if defined(CONFIG_BT_CTLR_DF_ADV_CTE_TX)
+		if (lll->cte_started) {
+			radio_switch_complete_and_phy_end_b2b_tx(phy_s, 0, phy_s, 0);
+		} else
+#endif /* CONFIG_BT_CTLR_DF_ADV_CTE_TX */
+		{
+			radio_switch_complete_and_end_b2b_tx(phy_s, 0, phy_s, 0);
+		}
 #else
 	if (0) {
 #endif /* CONFIG_BT_CTLR_ADV_SYNC_PDU_BACK2BACK */
@@ -211,7 +211,7 @@ static int prepare_cb(struct lll_prepare_param *p)
 
 		radio_isr_set(isr_done, lll);
 #if defined(CONFIG_BT_CTLR_DF_ADV_CTE_TX)
-		if (df_cfg) {
+		if (lll->cte_started) {
 			radio_switch_complete_and_phy_end_disable();
 		} else
 #endif /* CONFIG_BT_CTLR_DF_ADV_CTE_TX */
@@ -280,6 +280,7 @@ static void isr_tx(void *param)
 	struct lll_adv_sync *lll_sync;
 	struct pdu_adv *pdu;
 	struct lll_adv *lll;
+	uint32_t cte_len_us;
 	uint32_t hcto;
 
 	if (IS_ENABLED(CONFIG_BT_CTLR_PROFILE_ISR)) {
@@ -298,16 +299,30 @@ static void isr_tx(void *param)
 	pdu = lll_adv_pdu_linked_next_get(lll_sync->last_pdu);
 	LL_ASSERT(pdu);
 	lll_sync->last_pdu = pdu;
+#if defined(CONFIG_BT_CTLR_DF_ADV_CTE_TX)
+	lll_df_cte_tx_enable(lll_sync, pdu, &cte_len_us);
+#else
+	cte_len_us = 0U;
+#endif /* CONFIG_BT_CTLR_DF_ADV_CTE_TX */
 
 	/* setup tIFS switching */
 	if (pdu->adv_ext_ind.ext_hdr_len && pdu->adv_ext_ind.ext_hdr.aux_ptr) {
 		radio_tmr_tifs_set(ADV_SYNC_PDU_B2B_IFS);
 		radio_isr_set(isr_tx, lll_sync);
-		radio_switch_complete_and_b2b_tx(lll->phy_s, 0, lll->phy_s, 0);
-	} else {
-		radio_isr_set(lll_isr_done, lll);
 #if defined(CONFIG_BT_CTLR_DF_ADV_CTE_TX)
-		if (df_cfg) {
+		if (lll_sync->cte_started) {
+			radio_switch_complete_and_phy_end_b2b_tx(lll->phy_s, 0,
+								 lll->phy_s, 0);
+		} else
+#endif /* CONFIG_BT_CTLR_DF_ADV_CTE_TX */
+		{
+			radio_switch_complete_and_end_b2b_tx(lll->phy_s, 0,
+							     lll->phy_s, 0);
+		}
+	} else {
+		radio_isr_set(isr_done, lll);
+#if defined(CONFIG_BT_CTLR_DF_ADV_CTE_TX)
+		if (lll_sync->cte_started) {
 			radio_switch_complete_and_phy_end_disable();
 		} else
 #endif /* CONFIG_BT_CTLR_DF_ADV_CTE_TX */
@@ -359,8 +374,7 @@ static void isr_tx(void *param)
 static void pdu_b2b_update(struct lll_adv_sync *lll, struct pdu_adv *pdu)
 {
 	while (pdu) {
-		pdu_b2b_aux_ptr_update(pdu, lll->adv->phy_s, 0, 0,
-				       ADV_SYNC_PDU_B2B_IFS);
+		pdu_b2b_aux_ptr_update(pdu, lll->adv->phy_s, 0, 0, ADV_SYNC_PDU_B2B_IFS);
 		pdu = lll_adv_pdu_linked_next_get(pdu);
 	}
 }
