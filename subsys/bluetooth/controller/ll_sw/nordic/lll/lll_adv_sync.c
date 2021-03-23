@@ -52,10 +52,11 @@ static int prepare_cb(struct lll_prepare_param *p);
 static void isr_done(void *param);
 #if defined(CONFIG_BT_CTLR_ADV_SYNC_PDU_BACK2BACK)
 static void isr_tx(void *param);
-static void pdu_b2b_update(struct lll_adv_sync *lll, struct pdu_adv *pdu);
+static void pdu_b2b_update(struct lll_adv_sync *lll, struct pdu_adv *pdu,
+			   uint32_t cte_len_us);
 static void pdu_b2b_aux_ptr_update(struct pdu_adv *pdu, uint8_t phy,
 				   uint8_t flags, uint8_t chan_idx,
-				   uint32_t tifs);
+				   uint32_t tifs, uint32_t cte_len_us);
 #endif /* CONFIG_BT_CTLR_ADV_SYNC_PDU_BACK2BACK */
 
 int lll_adv_sync_init(void)
@@ -182,7 +183,7 @@ static int prepare_cb(struct lll_prepare_param *p)
 		/* AuxPtr offsets for b2b TX are fixed for given chain so we can
 		 * calculate them here in advance.
 		 */
-		pdu_b2b_update(lll, pdu);
+		pdu_b2b_update(lll, pdu, cte_len_us);
 	}
 #endif
 
@@ -193,7 +194,7 @@ static int prepare_cb(struct lll_prepare_param *p)
 		lll->last_pdu = pdu;
 
 		radio_isr_set(isr_tx, lll);
-		radio_tmr_tifs_set(ADV_SYNC_PDU_B2B_IFS);
+		radio_tmr_tifs_set(ADV_SYNC_PDU_B2B_IFS + cte_len_us);
 #if defined(CONFIG_BT_CTLR_DF_ADV_CTE_TX)
 		if (lll->cte_started) {
 			radio_switch_complete_and_phy_end_b2b_tx(phy_s, 0, phy_s, 0);
@@ -307,7 +308,7 @@ static void isr_tx(void *param)
 
 	/* setup tIFS switching */
 	if (pdu->adv_ext_ind.ext_hdr_len && pdu->adv_ext_ind.ext_hdr.aux_ptr) {
-		radio_tmr_tifs_set(ADV_SYNC_PDU_B2B_IFS);
+		radio_tmr_tifs_set(ADV_SYNC_PDU_B2B_IFS + cte_len_us);
 		radio_isr_set(isr_tx, lll_sync);
 #if defined(CONFIG_BT_CTLR_DF_ADV_CTE_TX)
 		if (lll_sync->cte_started) {
@@ -341,7 +342,7 @@ static void isr_tx(void *param)
 	}
 
 	/* +/- 2us active clock jitter, +1 us hcto compensation */
-	hcto = radio_tmr_tifs_base_get() + ADV_SYNC_PDU_B2B_IFS + 4 + 1;
+	hcto = radio_tmr_tifs_base_get() + ADV_SYNC_PDU_B2B_IFS + cte_len_us + 4 + 1;
 	hcto += radio_tx_chain_delay_get(lll->phy_s, 1);
 	hcto += addr_us_get(lll->phy_s);
 	hcto -= radio_tx_chain_delay_get(lll->phy_s, 0);
@@ -361,7 +362,8 @@ static void isr_tx(void *param)
 	}
 
 	radio_gpio_lna_setup();
-	radio_gpio_pa_lna_enable(radio_tmr_tifs_base_get() + ADV_SYNC_PDU_B2B_IFS - 4 -
+	radio_gpio_pa_lna_enable(radio_tmr_tifs_base_get() +
+				 ADV_SYNC_PDU_B2B_IFS + cte_len_us - 4 -
 				 radio_tx_chain_delay_get(lll->phy_s, 0) -
 				 CONFIG_BT_CTLR_GPIO_LNA_OFFSET);
 #endif /* CONFIG_BT_CTLR_GPIO_LNA_PIN */
@@ -371,17 +373,19 @@ static void isr_tx(void *param)
 	}
 }
 
-static void pdu_b2b_update(struct lll_adv_sync *lll, struct pdu_adv *pdu)
+static void pdu_b2b_update(struct lll_adv_sync *lll, struct pdu_adv *pdu,
+			   uint32_t cte_len_us)
 {
 	while (pdu) {
-		pdu_b2b_aux_ptr_update(pdu, lll->adv->phy_s, 0, 0, ADV_SYNC_PDU_B2B_IFS);
+		pdu_b2b_aux_ptr_update(pdu, lll->adv->phy_s, 0, 0,
+				       ADV_SYNC_PDU_B2B_IFS, cte_len_us);
 		pdu = lll_adv_pdu_linked_next_get(pdu);
 	}
 }
 
 static void pdu_b2b_aux_ptr_update(struct pdu_adv *pdu, uint8_t phy,
 				   uint8_t flags, uint8_t chan_idx,
-				   uint32_t tifs)
+				   uint32_t tifs, uint32_t cte_len_us)
 {
 	struct pdu_adv_com_ext_adv *com_hdr;
 	struct pdu_adv_ext_hdr *hdr;
@@ -410,6 +414,9 @@ static void pdu_b2b_aux_ptr_update(struct pdu_adv *pdu, uint8_t phy,
 	/* Update AuxPtr */
 	aux = (void *)dptr;
 	offs = PKT_AC_US(pdu->len, phy) + tifs;
+	if (hdr->cte_info) {
+		offs += cte_len_us;
+	}
 	offs = offs / OFFS_UNIT_30_US;
 	if (!!(offs >> 13)) {
 		aux->offs = offs / (OFFS_UNIT_300_US / OFFS_UNIT_30_US);
