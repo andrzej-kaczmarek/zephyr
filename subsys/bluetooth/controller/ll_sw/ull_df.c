@@ -194,6 +194,125 @@ uint8_t ll_df_set_cl_cte_tx_params(uint8_t adv_handle, uint8_t cte_len,
 	return BT_HCI_ERR_SUCCESS;
 }
 
+static uint8_t enable_per_adv_cte_tx(struct ll_adv_set *adv,
+				     struct lll_df_adv_cfg *df_cfg,
+				     uint8_t *ter_idx)
+{
+	struct pdu_adv *pdu_next, *pdu_prev, *prev_chain_pdu;
+	struct adv_pdu_field_data pdu_data;
+	struct lll_adv_sync *lll_sync;
+	struct pdu_cte_info cte_info;
+	uint16_t add_hdr_field;
+	bool new_chain;
+	uint8_t cte_idx;
+	uint8_t err;
+
+	lll_sync = adv->lll.sync;
+
+	cte_info.type = df_cfg->cte_type;
+	cte_info.time = df_cfg->cte_length;
+	cte_info.rfu = 0U;
+	pdu_data.field_data = (uint8_t *)&cte_info;
+	pdu_data.extra_data = df_cfg;
+
+	if (df_cfg->cte_count == 1) {
+		err = ull_adv_sync_pdu_set_clear(adv,
+						 ULL_ADV_PDU_HDR_FIELD_CTE_INFO,
+						 0, &pdu_data, ter_idx);
+		if (err) {
+			return err;
+		}
+	} else {
+		/* It can be chain that is currently in use by LLL or chain
+		 * that was created by other API calls but not yet peeked
+		 * by LLL.
+		 */
+		prev_chain_pdu = lll_adv_sync_data_peek(lll_sync, NULL);
+
+		err = ull_adv_sync_pdu_set_clear(adv,
+						ULL_ADV_PDU_HDR_FIELD_CTE_INFO |
+						ULL_ADV_PDU_HDR_FIELD_AUX_PTR,
+						0, &pdu_data, ter_idx);
+		if (err) {
+			return err;
+		}
+
+		/* Get reference to previous periodic advertising PDU data */
+		pdu_prev = (void *)lll_sync->data.pdu[*ter_idx];
+		/* If chain is new (not in use by LLL, can't re-use existing
+		 * PDUs in it.
+		 */
+		new_chain = prev_chain_pdu != pdu_prev ? true : false;
+		/* Start from 1, first PDU with CTE is already created */
+		cte_idx = 1;
+
+		add_hdr_field = (ULL_ADV_PDU_HDR_FIELD_CTE_INFO |
+				 ULL_ADV_PDU_HDR_FIELD_AUX_PTR);
+
+		while (cte_idx < df_cfg->cte_count) {
+			prev_chain_pdu = lll_adv_pdu_linked_next_get(prev_chain_pdu);
+			if (!prev_chain_pdu) {
+				break;
+			}
+
+			pdu_next = lll_adv_pdu_linked_next_get(pdu_prev);
+			if (!pdu_next) {
+				pdu_next = lll_adv_pdu_alloc_pdu_adv();
+				if (!pdu_next) {
+					return BT_HCI_ERR_MEM_CAPACITY_EXCEEDED;
+				}
+			}
+
+			err = ull_adv_sync_hdr_set_clear(lll_sync,
+							 prev_chain_pdu,
+							 pdu_next,
+							 add_hdr_field,
+							 0, &cte_info);
+			if (err) {
+				/* ToDo - cleanup of already allocated chain PDUs */
+				return err;
+			}
+
+			/* add to chain */
+			lll_adv_pdu_linked_append(pdu_next, pdu_prev);
+			pdu_prev = pdu_next;
+			++cte_idx;
+			if (cte_idx == df_cfg->cte_count - 1) {
+				/* Do not add aux_ptr filed to last PDU with
+				 * CTE. It may have aux_ptr if existing chain
+				 * is longer than number of CTEs requested.
+				 */
+				add_hdr_field &= (~ULL_ADV_PDU_HDR_FIELD_AUX_PTR);
+			}
+		}
+
+		add_hdr_field = (ULL_ADV_PDU_HDR_FIELD_CTE_INFO |
+				 ULL_ADV_PDU_HDR_FIELD_AUX_PTR);
+
+		while (cte_idx < df_cfg->cte_count) {
+			pdu_next = lll_adv_pdu_alloc_pdu_adv();
+			if (!pdu_next) {
+				return BT_HCI_ERR_MEM_CAPACITY_EXCEEDED;
+			}
+			adv_sync_pdu_init(pdu_next, add_hdr_field);
+			adv_sync_pdu_cte_info_set(pdu_next, &cte_info);
+
+			lll_adv_pdu_linked_append(pdu_next, pdu_prev);
+			pdu_prev = pdu_next;
+			++cte_idx;
+			if (cte_idx == df_cfg->cte_count - 1) {
+				/* Do not add aux_ptr filed to last PDU with
+				 * CTE. It may have aux_ptr if existing chain
+				 * is longer than number of CTEs requested.
+				 */
+				add_hdr_field &= (~ULL_ADV_PDU_HDR_FIELD_AUX_PTR);
+			}
+		}
+	}
+
+	return BT_HCI_ERR_SUCCESS;
+}
+
 /* @brief Function enables or disables CTE TX for periodic advertising.
  *
  * @param[in] handle                    Advertising set handle.
@@ -262,20 +381,11 @@ uint8_t ll_df_set_cl_cte_tx_enable(uint8_t adv_handle, uint8_t cte_enable)
 
 		df_cfg->is_enabled = 0U;
 	} else {
-		struct pdu_cte_info cte_info;
-		struct adv_pdu_field_data pdu_data;
-
 		if (df_cfg->is_enabled) {
 			return BT_HCI_ERR_CMD_DISALLOWED;
 		}
 
-		cte_info.type = df_cfg->cte_type;
-		cte_info.time = df_cfg->cte_length;
-		pdu_data.field_data = (uint8_t *)&cte_info;
-		pdu_data.extra_data = df_cfg;
-		err = ull_adv_sync_pdu_set_clear(adv,
-						 ULL_ADV_PDU_HDR_FIELD_CTE_INFO,
-						 0, &pdu_data, &ter_idx);
+		err = enable_per_adv_cte_tx(adv, df_cfg, &ter_idx);
 		if (err) {
 			return err;
 		}
