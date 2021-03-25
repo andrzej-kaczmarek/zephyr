@@ -313,6 +313,133 @@ static uint8_t enable_per_adv_cte_tx(struct ll_adv_set *adv,
 	return BT_HCI_ERR_SUCCESS;
 }
 
+static bool is_pdu_cte_or_empty_pdu(const struct pdu_adv *pdu)
+{
+	const struct pdu_adv_com_ext_adv *com_hdr;
+	const struct pdu_adv_ext_hdr *ext_hdr;
+	uint8_t size_rem = 0;
+	uint8_t ext_len;
+
+	if (pdu->len != PDU_AC_PAYLOAD_SIZE_MIN) {
+		com_hdr = &pdu->adv_ext_ind;
+		if ((com_hdr->ext_hdr_len + PDU_AC_EXT_HEADER_SIZE_MIN) != pdu->len) {
+			/* There are adv. data in PDU */
+			return false;
+		} else {
+			/* Check size of the ext. header without cte_info and
+			 * aux_ptr. If that is min ext. PDU size then the PDU is
+			 * CTE only or empty.
+			 */
+			ext_hdr = &com_hdr->ext_hdr;
+			ext_len = com_hdr->ext_hdr_len;
+
+			if (ext_hdr->cte_info) {
+				size_rem += sizeof(struct pdu_cte_info);
+			}
+			if (ext_hdr->aux_ptr) {
+				size_rem += sizeof(struct pdu_adv_aux_ptr);
+			}
+
+			if((ext_len - size_rem) != PDU_AC_EXT_HEADER_SIZE_MIN) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+static int disable_per_adv_cte_tx(struct ll_adv_set *adv, uint8_t *ter_idx)
+{
+	struct pdu_adv *prev_chain_pdu, *prev_chain_pdu_next;
+	struct pdu_adv *pdu_next, *pdu_prev, *release_pdu;
+	struct lll_adv_sync *lll_sync;
+	struct lll_df_adv_cfg *df_cfg;
+	uint16_t rem_hdr_field;
+	bool new_chain;
+	int err;
+
+	lll_sync = adv->lll.sync;
+	release_pdu = NULL;
+
+	df_cfg = adv->df_cfg;
+
+	if (df_cfg->cte_count == 1) {
+		err = ull_adv_sync_pdu_set_clear(adv, 0,
+						ULL_ADV_PDU_HDR_FIELD_CTE_INFO,
+						NULL, ter_idx);
+		if (err) {
+			return err;
+		}
+	} else {
+		prev_chain_pdu = lll_adv_sync_data_peek(lll_sync, NULL);
+
+		err = ull_adv_sync_pdu_set_clear(adv, 0,
+						ULL_ADV_PDU_HDR_FIELD_CTE_INFO,
+						NULL, ter_idx);
+		if (err) {
+			return err;
+		}
+
+		/* Get reference to edited periodic advertising PDU data */
+		pdu_prev = (void *)lll_sync->data.pdu[*ter_idx];
+
+		new_chain = prev_chain_pdu != pdu_prev ? true : false;
+		prev_chain_pdu = lll_adv_pdu_linked_next_get(prev_chain_pdu);
+
+		while (prev_chain_pdu) {
+			if (!is_pdu_cte_or_empty_pdu(prev_chain_pdu)) {
+				prev_chain_pdu_next = lll_adv_pdu_linked_next_get(prev_chain_pdu);
+
+				rem_hdr_field = ULL_ADV_PDU_HDR_FIELD_CTE_INFO;
+				if (prev_chain_pdu_next) {
+					if (is_pdu_cte_or_empty_pdu(prev_chain_pdu_next)) {
+						rem_hdr_field |= ULL_ADV_PDU_HDR_FIELD_AUX_PTR;
+					}
+				}
+
+				if (new_chain) {
+					pdu_next = lll_adv_pdu_alloc_pdu_adv();
+				} else {
+					pdu_next = lll_adv_pdu_linked_next_get(pdu_prev);
+				}
+				if (!pdu_next) {
+					return BT_HCI_ERR_MEM_CAPACITY_EXCEEDED;
+				}
+				/* check if the pdu is empty without cte and aux ptr */
+				err = ull_adv_sync_hdr_set_clear(lll_sync,
+								prev_chain_pdu,
+								pdu_next,
+								0,
+								rem_hdr_field,
+								NULL);
+				if (err) {
+					return err;
+				}
+				/* add to chain */
+				lll_adv_pdu_linked_append(pdu_next, pdu_prev);
+				pdu_prev = pdu_next;
+			} else {
+				release_pdu = prev_chain_pdu;
+			}
+
+			prev_chain_pdu = lll_adv_pdu_linked_next_get(prev_chain_pdu);
+
+			/* If there is unused link in a chain and this is not new_chain
+			* (it was already enqueued for but not peeked or not yet
+			* enqueued.
+			*/
+			if (release_pdu && !new_chain) {
+				/* It should be done once for new last PDU in a chain */
+				PDU_ADV_NEXT_PTR(pdu_prev) = NULL;
+				lll_adv_pdu_linked_release(release_pdu);
+				release_pdu = NULL;
+				/* release unused pdus from chain i.e. new chain is shorther */
+			}
+		}
+	}
+	return 0;
+}
+
 /* @brief Function enables or disables CTE TX for periodic advertising.
  *
  * @param[in] handle                    Advertising set handle.
@@ -361,9 +488,7 @@ uint8_t ll_df_set_cl_cte_tx_enable(uint8_t adv_handle, uint8_t cte_enable)
 			return BT_HCI_ERR_CMD_DISALLOWED;
 		}
 
-		err = ull_adv_sync_pdu_set_clear(adv, 0,
-						 ULL_ADV_PDU_HDR_FIELD_CTE_INFO,
-						 NULL, &ter_idx);
+		err = disable_per_adv_cte_tx(adv, &ter_idx);
 		if (err) {
 			return err;
 		}
