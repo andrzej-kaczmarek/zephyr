@@ -350,6 +350,19 @@ void lll_adv_pdu_linked_trim(struct pdu_adv *pdu)
 		mem_release(prev, &mem_pdu.free);
 	}
 }
+
+void lll_adv_pdu_linked_release(struct pdu_adv *pdu)
+{
+	uint8_t free_idx;
+
+	if (!MFIFO_ENQUEUE_IDX_GET(pdu_free, &free_idx)) {
+		/* ToDo how to solve that ? */
+		return;
+	}
+
+	MFIFO_BY_IDX_ENQUEUE(pdu_free, free_idx, pdu);
+	k_sem_give(&sem_pdu_free);
+}
 #endif
 
 struct pdu_adv *lll_adv_pdu_latest_get(struct lll_adv_pdu *pdu,

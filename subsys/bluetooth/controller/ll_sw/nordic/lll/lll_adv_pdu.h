@@ -150,6 +150,7 @@ static inline void *lll_adv_sync_extra_data_peek(struct lll_adv_sync *lll)
 
 #if defined(CONFIG_BT_CTLR_ADV_PDU_LINK)
 void lll_adv_pdu_linked_trim(struct pdu_adv *pdu);
+void lll_adv_pdu_linked_release(struct pdu_adv *pdu);
 
 static inline struct pdu_adv *lll_adv_pdu_linked_next_get(struct pdu_adv *pdu)
 {
