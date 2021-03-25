@@ -16,6 +16,8 @@
 #include <sys/byteorder.h>
 #include <sys/util.h>
 
+#define TEST_CTE_TX_DISABLE
+
 /* Length of CTE in unit of 8[us] */
 #define CTE_LEN (0x14U)
 
@@ -120,6 +122,20 @@ void main(void)
 	}
 	printk("success\n");
 
+#if defined(TEST_CTE_TX_DISABLE)
+	err = bt_df_adv_cte_tx_disable(adv_set);
+	if (err) {
+		printk("failed (err %d)\n", err);
+		return;
+	}
+
+	err = bt_df_adv_cte_tx_enable(adv_set);
+	if (err) {
+		printk("failed (err %d)\n", err);
+		return;
+	}
+#endif /* TEST_CTE_TX_DISABLE */
+
 	printk("Periodic advertising enable...");
 	err = bt_le_per_adv_start(adv_set);
 	if (err) {
@@ -140,4 +156,21 @@ void main(void)
 	bt_addr_le_to_str(&oob_local.addr, addr_s, sizeof(addr_s));
 
 	printk("Started extended advertising as %s\n", addr_s);
+
+#if defined(TEST_CTE_TX_DISABLE)
+
+	k_sleep(K_SECONDS(10));
+	err = bt_df_adv_cte_tx_disable(adv_set);
+	if (err) {
+		printk("failed (err %d)\n", err);
+		return;
+	}
+
+	k_sleep(K_SECONDS(10));
+	err = bt_df_adv_cte_tx_enable(adv_set);
+	if (err) {
+		printk("failed (err %d)\n", err);
+		return;
+	}
+#endif /* TEST_CTE_TX_DISABLE */
 }
