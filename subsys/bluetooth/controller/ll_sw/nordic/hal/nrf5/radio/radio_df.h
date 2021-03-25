@@ -33,7 +33,7 @@ void radio_df_ant_switch_spacing_set_4us(void);
  * Radio internal list. Before start of new patterns clear the list
  * by call to @ref radio_df_ant_switch_pattern_clear.
  */
-void radio_df_ant_switch_pattern_set(uint8_t *patterns, uint8_t len);
+void radio_df_ant_switch_pattern_set(const uint8_t *patterns, uint8_t len);
 /* Resets Direction Finding radio configuration */
 void radio_df_reset(void);
 

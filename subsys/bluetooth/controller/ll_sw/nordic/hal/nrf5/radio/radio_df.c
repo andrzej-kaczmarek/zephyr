@@ -227,7 +227,7 @@ void radio_df_ant_switch_spacing_set_4us(void)
 	radio_df_ant_switch_spacing_set(RADIO_DFECTRL1_TSWITCHSPACING_4us);
 }
 
-void radio_df_ant_switch_pattern_set(uint8_t *patterns, uint8_t len)
+void radio_df_ant_switch_pattern_set(const uint8_t *patterns, uint8_t len)
 {
 	/* SWITCHPATTERN is like a moving pointer to underlying buffer.
 	 * Each write stores a value and moves the pointer to new free position.
