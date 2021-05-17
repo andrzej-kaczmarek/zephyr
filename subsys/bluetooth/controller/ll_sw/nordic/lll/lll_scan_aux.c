@@ -73,6 +73,16 @@ static void isr_scan_aux_setup(void *param);
 static uint16_t trx_cnt; /* TODO: move to a union in lll.c, common to all roles
 			  */
 
+static void ping(void)
+{
+	__NOP();
+	NRF_P1->OUTSET = 1 << 7;
+	__NOP();
+	__NOP();
+	NRF_P1->OUTCLR = 1 << 7;
+	__NOP();
+}
+
 int lll_scan_aux_init(void)
 {
 	int err;
@@ -300,6 +310,8 @@ static void isr_rx(struct lll_scan *lll_scan, struct lll_scan_aux *lll_aux,
 	uint8_t crc_ok;
 	uint8_t rl_idx;
 
+	ping();
+
 	if (IS_ENABLED(CONFIG_BT_CTLR_PROFILE_ISR)) {
 		lll_prof_latency_capture();
 	}
@@ -328,6 +340,8 @@ static void isr_rx(struct lll_scan *lll_scan, struct lll_scan_aux *lll_aux,
 		goto isr_rx_do_close;
 	}
 
+	ping();
+
 #if defined(CONFIG_BT_CTLR_PRIVACY)
 	rl_idx = devmatch_ok ?
 		 ull_filter_lll_rl_idx(!!(lll_scan->filter_policy & 0x01),
@@ -341,6 +355,8 @@ static void isr_rx(struct lll_scan *lll_scan, struct lll_scan_aux *lll_aux,
 	if (crc_ok) {
 		int err;
 
+		ping();
+
 		err = isr_rx_pdu(lll_scan, lll_aux, phy_aux, devmatch_ok,
 				 devmatch_id, irkmatch_ok, irkmatch_ok, rl_idx,
 				 rssi_ready);
@@ -348,6 +364,9 @@ static void isr_rx(struct lll_scan *lll_scan, struct lll_scan_aux *lll_aux,
 			if (IS_ENABLED(CONFIG_BT_CTLR_PROFILE_ISR)) {
 				lll_prof_send();
 			}
+
+			ping();
+			ping();
 
 			return;
 		}
@@ -1020,7 +1039,9 @@ static void isr_rx_from_ticker(void *param)
 	scan = HDR_LLL2ULL(aux->rx_head->rx_ftr.param);
 	lll = &scan->lll;
 
+	NRF_P1->OUTSET = 1 << 5;
 	isr_rx(lll, lll_aux, lll_aux->phy);
+	NRF_P1->OUTCLR = 1 << 5;
 }
 
 static void isr_rx_from_lll(void *param)
@@ -1035,5 +1056,7 @@ static void isr_rx_from_lll(void *param)
 
 	/* FIXME: figure out which phy was used for aux */
 
+	NRF_P1->OUTSET = 1 << 6;
 	isr_rx(lll, NULL, phy);
+	NRF_P1->OUTCLR = 1 << 6;
 }

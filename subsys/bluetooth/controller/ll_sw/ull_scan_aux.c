@@ -55,6 +55,16 @@ static void ticker_op_aux_failure(void *param);
 static struct ll_scan_aux_set ll_scan_aux_pool[CONFIG_BT_CTLR_SCAN_AUX_SET];
 static void *scan_aux_free;
 
+static void ping(void)
+{
+	__NOP();
+	NRF_P1->OUTSET = 1 << 4;
+	__NOP();
+	__NOP();
+	NRF_P1->OUTCLR = 1 << 4;
+	__NOP();
+}
+
 int ull_scan_aux_init(void)
 {
 	int err;
@@ -108,6 +118,7 @@ void ull_scan_aux_setup(memq_link_t *link, struct node_rx_hdr *rx)
 
 	switch (rx->type) {
 	case NODE_RX_TYPE_EXT_1M_REPORT:
+		ping();
 		lll = NULL;
 		aux = NULL;
 		lll_scan = ftr->param;
@@ -125,6 +136,8 @@ void ull_scan_aux_setup(memq_link_t *link, struct node_rx_hdr *rx)
 		break;
 	case NODE_RX_TYPE_EXT_AUX_REPORT:
 	case NODE_RX_TYPE_EXT_AUX_REPORT_LLL:
+		ping();
+		ping();
 		if (rx->type == NODE_RX_TYPE_EXT_AUX_REPORT_LLL) {
 			lll_scan = ftr->param;
 			LL_ASSERT(lll_scan->lll_aux);
@@ -494,6 +507,10 @@ static void done_disabled_cb(void *param)
 
 static void flush(struct ll_scan_aux_set *aux, struct node_rx_hdr *rx)
 {
+	ping();
+	ping();
+	ping();
+
 	if (aux->rx_last) {
 		struct lll_scan *lll;
 
