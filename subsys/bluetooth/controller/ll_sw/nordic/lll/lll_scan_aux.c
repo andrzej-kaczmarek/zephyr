@@ -577,7 +577,7 @@ static int isr_rx_pdu(struct lll_scan *lll_scan, struct lll_scan_aux *lll_aux,
 		ftr->rl_idx = FILTER_IDX_NONE;
 #endif /* CONFIG_BT_CTLR_PRIVACY */
 
-		ftr->extra = lll_scan_aux_setup(lll_scan, pdu);
+		ftr->extra = lll_scan_aux_setup(lll_scan, pdu, phy_aux);
 
 		ull_rx_put(node_rx->hdr.link, node_rx);
 		ull_rx_sched();
@@ -798,7 +798,7 @@ bool isr_scan_connect_rsp_check(struct pdu_adv *pdu_tx, struct pdu_adv *pdu_rx)
 #endif /* CONFIG_BT_CENTRAL */
 
 struct node_rx_pdu *lll_scan_aux_setup(struct lll_scan *lll,
-				       struct pdu_adv *pdu)
+				       struct pdu_adv *pdu, uint8_t pdu_phy)
 {
 	struct pdu_adv_com_ext_adv *pri_com_hdr;
 	struct pdu_adv_ext_hdr *pri_hdr;
@@ -812,8 +812,6 @@ struct node_rx_pdu *lll_scan_aux_setup(struct lll_scan *lll,
 	uint32_t radio_end_us;
 	uint8_t *pri_dptr;
 	uint8_t phy;
-
-	/* FIXME: this always uses pri-to-aux phy, need to setup correctly */
 
 	LL_ASSERT(pdu->type == PDU_ADV_TYPE_EXT_IND);
 
@@ -848,7 +846,7 @@ struct node_rx_pdu *lll_scan_aux_setup(struct lll_scan *lll,
 	/* Calculate the aux offset from start of the scan window */
 	aux_offset_us = (uint32_t)aux_ptr->offs * window_size_us;
 	radio_end_us = radio_tmr_end_get() -
-		       radio_rx_chain_delay_get(lll->phy, 1);
+		       radio_rx_chain_delay_get(pdu_phy, 1);
 
 	/* Calculate the window widening that needs to be deducted */
 	if (aux_ptr->ca) {
@@ -860,7 +858,7 @@ struct node_rx_pdu *lll_scan_aux_setup(struct lll_scan *lll,
 	phy = BIT(aux_ptr->phy);
 
 	aux_start_us = radio_end_us;
-	aux_start_us -= PKT_AC_US(pdu->len, 0, lll->phy);
+	aux_start_us -= PKT_AC_US(pdu->len, 0, pdu_phy);
 	aux_start_us += aux_offset_us;
 	aux_start_us -= lll_radio_rx_ready_delay_get(phy, 1);
 	aux_start_us -= window_widening_us;
@@ -886,7 +884,7 @@ struct node_rx_pdu *lll_scan_aux_setup(struct lll_scan *lll,
 	ftr->param = lll;
 	ftr->extra = aux_ptr;
 	ftr->radio_end_us = radio_tmr_end_get() -
-			    PKT_AC_US(pdu->len, 0, lll->phy);
+			    PKT_AC_US(pdu->len, 0, pdu_phy);
 
 	radio_isr_set(isr_scan_aux_setup, node_rx);
 	radio_disable();
@@ -939,11 +937,14 @@ static void isr_scan_aux_setup(void *param)
 
 	radio_pkt_rx_set(node_rx->pdu);
 
+	/* XXX: some other way to pass aux phy? pass complete aux_ptr instead? */
+	ftr->extra = UINT_TO_POINTER(aux_ptr->phy);
+
 	/* FIXME: we could (?) use isr_rx_from_ticker if already have aux
 	 *        context allocated, i.e. some previous aux was scheduled from
 	 *        ull already.
 	 */
-	radio_isr_set(isr_rx_from_lll, lll);
+	radio_isr_set(isr_rx_from_lll, node_rx);
 
 	/* Setup receive and disable radio */
 	radio_switch_complete_and_disable();
@@ -1024,11 +1025,15 @@ static void isr_rx_from_ticker(void *param)
 
 static void isr_rx_from_lll(void *param)
 {
+	struct node_rx_pdu *node_rx;
 	struct lll_scan *lll;
+	uint8_t phy;
 
-	lll = param;
+	node_rx = param;
+	lll = node_rx->hdr.rx_ftr.param;
+	phy = POINTER_TO_UINT(node_rx->hdr.rx_ftr.extra);
 
 	/* FIXME: figure out which phy was used for aux */
 
-	isr_rx(lll, NULL, lll->phy);
+	isr_rx(lll, NULL, phy);
 }

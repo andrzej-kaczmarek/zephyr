@@ -1301,7 +1301,8 @@ static int isr_rx_scan_report(struct lll_scan *lll, uint8_t rssi_ready,
 					radio_tmr_end_get() -
 					radio_rx_chain_delay_get(lll->phy, 1);
 
-				ftr->extra = lll_scan_aux_setup(lll, pdu_adv_rx);
+				ftr->extra = lll_scan_aux_setup(lll, pdu_adv_rx,
+								lll->phy);
 				if (ftr->extra) {
 					err = -EBUSY;
 				}
